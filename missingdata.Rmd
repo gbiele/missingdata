@@ -1,0 +1,75 @@
+---
+title: "Missing data in R"
+author: "Guido Biele"
+date: "27 mars 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+source("functions/drawdag.R")
+```
+
+The goal of this session is to briefly introduce dealing with missing data in R.
+We do this by first getting an overview about type od missing data, then moving on to general wise to deal with missing data, and finally looking a a few examples to do analyses in R when data is missing.
+
+## Types of missing data
+
+Rubin (1976) orginally proposed a classification of missing data into three types:
+
+* MCAR or Missing Completly at Random (here, "nomen est omen")
+* MAR or Missing At Random (i.e., missing is random conditional on additional observed variables)
+* MNAR or Missing Not At Random (is not MCAR or MAR)
+
+
+One way to better understand these differnet type so missingness is to use directed acycli graphs (DAGs) and draw missingness or m-graphs (e.g. Mohan & Pearl, 2018). To explain m-graphs, lets start with a simple example (modified from Mohan & Pearl 2018, who were inspired by Little & Rubin, 2002): We want ot investiagte the effects of educational and age on obisety. A simple 
+DAG that represents this relationship looks as follows:
+
+```{r simple_DAG, fig.height=2, fig.width=2, fig.align='center'}
+library(dagitty)
+
+simple_dag = dagitty(
+"
+A 1 @1,0
+O O @0,1
+E E @-1,0
+
+A O
+E O
+"
+)
+drawdag(simple_dag)
+```
+
+This DAG represents the assumpion that education (E) and age (A) are causes of obesity (O).
+
+
+To represent missingness, m-graphs assume a new variable O* that represents the observable variable O after taking the causes for missingness of this variable R_O into account. At the same time, the orginal variable O becomes a unobserval (latent) variable. Here is such a graph:
+
+
+```{r missing_DAG, fig.height=4, fig.width=3, fig.align='center'}
+library(dagitty)
+
+missing_dag = dagitty(
+"
+A  1 @1,0
+O  O @0,1
+E  E @-1,0
+O* 1 @1,2
+R_O 1 @2,1
+
+A O
+E O
+O O*
+R_O O*
+"
+)
+drawdag(missing_dag,
+        shapes = list(O = "fc"),
+        col_shapes = "gray")
+```
+
+## Methods to deal with missing data
+
+## Dealing with missing data in R
+
