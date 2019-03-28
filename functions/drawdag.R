@@ -1,11 +1,16 @@
 # from  https://github.com/rmcelreath/rethinking/blob/Experimental/R/drawdag.R
-drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="black" , cex=1 , lwd=1.5 , goodarrow=TRUE , xlim , ylim , shapes , col_shapes , radius=3 , ... ){ 
+drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="black" , cex=1 , lwd=1.5 , goodarrow=TRUE , xlim , ylim , shapes , col_shapes , radius=4 , ... ){ 
   require(dagitty)
   x <- as.dagitty( x )
   dagitty:::.supportsTypes(x,c("dag","mag","pdag"))
   coords <- coordinates( x )
   if( any( !is.finite( coords$x ) | !is.finite( coords$y ) ) ){
     stop("Please supply plot coordinates for graph! See ?coordinates and ?graphLayout.")
+  }
+  if(length(latents(x)) > 0) {
+    col_shapes = "grey"
+    shapes = as.list(rep("fc",2))
+    names(shapes) = latents(x)
   }
   labels <- names(coords$x)
   par(mar=rep(0,4))
@@ -110,15 +115,20 @@ drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="b
   }
   # node labels
   ws = grep("_",labels)
-  text( coords$x[-ws], -coords$y[labels[-ws]], labels[-ws] , cex=cex , col=col_labels )
-  for (k in ws) {
-    a = strsplit(labels[k],"_")[[1]][1]
-    b = strsplit(labels[k],"_")[[1]][2]
-    text( coords$x[k],
-          -coords$y[labels[k]],
-          expression(as.symbol(a)[as.symbol(b)]) ,
-          cex=cex , col=col_labels )
+  if (length(ws) > 0) {
+    text( coords$x[-ws], -coords$y[labels[-ws]], labels[-ws] , cex=cex , col=col_labels )
+    for (k in ws) {
+      a = strsplit(labels[k],"_")[[1]][1]
+      b = strsplit(labels[k],"_")[[1]][2]
+      text( coords$x[k],
+            -coords$y[labels[k]],
+            eval(parse(text=paste0("expression(",a,"[",b,"]",")"))),
+            cex=cex , col=col_labels )
+    }
+  } else {
+    text( coords$x, -coords$y[labels], labels , cex=cex , col=col_labels )
   }
+  
     
 }
 

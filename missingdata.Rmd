@@ -6,8 +6,9 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
-source("functions/drawdag.R")
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, fig.align = "center")
+sapply(dir("functions",full.names = T), source)
+  
 ```
 
 The goal of this session is to briefly introduce dealing with missing data in R.
@@ -25,14 +26,14 @@ Rubin (1976) orginally proposed a classification of missing data into three type
 One way to better understand these differnet type so missingness is to use directed acycli graphs (DAGs) and draw missingness or m-graphs (e.g. Mohan & Pearl, 2018). To explain m-graphs, lets start with a simple example (modified from Mohan & Pearl 2018, who were inspired by Little & Rubin, 2002): We want ot investiagte the effects of educational and age on obisety. A simple 
 DAG that represents this relationship looks as follows:
 
-```{r simple_DAG, fig.height=2, fig.width=2, fig.align='center'}
+```{r simple_DAG, fig.height=2, fig.width=2,}
 library(dagitty)
 
 simple_dag = dagitty(
 "
-A 1 @1,0
+E 1 @1,0
 O O @0,1
-E E @-1,0
+A 1 @-1,0
 
 A O
 E O
@@ -44,19 +45,18 @@ drawdag(simple_dag)
 This DAG represents the assumpion that education (E) and age (A) are causes of obesity (O).
 
 
-To represent missingness, m-graphs assume a new variable O* that represents the observable variable O after taking the causes for missingness of this variable R_O into account. At the same time, the orginal variable O becomes a unobserval (latent) variable. Here is such a graph:
+To represent missingness, m-graphs assume a new variable O* that represents the observable variable O after taking the causes for missingness of this variable R~O~ into account. At the same time, the orginal variable O becomes a unobserved (latent) variable. Here is such a graph:
 
-
-```{r missing_DAG, fig.height=4, fig.width=3, fig.align='center'}
+```{r MCAR_DAG, fig.height=3, fig.width=3}
 library(dagitty)
 
-missing_dag = dagitty(
+mcar_dag = dagitty(
 "
-A  1 @1,0
-O  O @0,1
-E  E @-1,0
-O* 1 @1,2
-R_O 1 @2,1
+E  E @1,0
+O  U @0,1
+A  E @-1,0
+O* O @1,2
+R_O A @2,1
 
 A O
 E O
@@ -64,12 +64,239 @@ O O*
 R_O O*
 "
 )
-drawdag(missing_dag,
-        shapes = list(O = "fc"),
-        col_shapes = "gray")
+drawdag(mcar_dag)
 ```
 
+This DAG represents a situation with where missingness is completely at random (MCAR). Next, a DAG that described missingness at random (MAR):
+
+```{r MAR_DAG, fig.height=3, fig.width=3}
+library(dagitty)
+
+mar_dag = dagitty(
+"
+E  E @1,0
+O  U @0,1
+A  E @-1,0
+O* O @1,2
+R_O A @2,1
+
+A O
+E R_O
+E O
+O O*
+R_O O*
+"
+)
+drawdag(mar_dag)
+```
+
+Here, missingness is random, given that we know age. Finally, we can look at a situation that where missingess is not at random (even taking into account age):
+
+```{r MNAR_DAG, fig.height=3, fig.width=3}
+library(dagitty)
+
+mnar_dag = dagitty(
+"
+E  E @1,0
+O  U @0,1
+A  E @-1,0
+O* O @1,2
+R_O A @2,1
+
+A O
+O R_O
+E O
+O O*
+R_O O*
+"
+)
+drawdag(mnar_dag)
+```
+
+Lets compare these three DAGs:
+
+```{r all_DAGs, fig.height=2, fig.width=6}
+par(mfrow = c(1,3))
+drawdag(mcar_dag)
+title("MCAR",line = -1)
+drawdag(mar_dag)
+title("MAR",line = -1)
+drawdag(mnar_dag)
+title("MNAR",line = -1)
+```
+
+A disctinction of these types of missingness is important, because they determine if we can still estimate "unbiased" effects and how we need to handle missing data in order to obtain unbiased effects. 
+
+In particular, in _MNAR_ describes our data, there is typically little we can do [^1]: There are excpetions, see Mohan & Pearl, 2018. To illustrate the problem lets simulate data for the MNAR situation:
+
+```{r sim_MNAR, fig.height=4.5, fig.width=4.5}
+library(boot)
+
+N = 500
+E = rnorm(N)
+A = rnorm(N)
+O = A - E + rnorm(N) 
+R_O = inv.logit(O+rnorm(N)) > .5
+
+par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01) 
+plot(E,O, pch = 16, col = "black")
+points(E[!R_O],O[!R_O], pch = 4, col = "red", cex = .75)
+abline(lm(O~E), col = "black", lwd = 2)
+abline(lm(O[R_O]~E[R_O]), col = "black", lwd = 2)
+abline(lm(O[R_O]~E[R_O]), col = "red", lwd = 2, lty = 2)
+legend("topright",
+       pch = c(16,4),
+       col = c("black","red"),
+       legend = c("full data","missing cases"),
+       bty = "n")
+
+```
+
+
+When the data is _MCAR_, simple list-wise deletion (complete case analysis) is suffient to deal with missingness. 
+
+When the data is _MAR_, list wise deletion is not appropriate, but a range of somewhat more complex methods can be used.
+
+The DAGs shown above are important, because they make it (relatively) easy to detect what type of missingness is present in the data. This is important because all methods used to deal with missing data build on some assumptions. If these assumptions are violated, our analysis will still produce invalid results. Therefor, one should always check if the assumptions hold.
+
+One way to check underlying assumptions is to see if the implied conditional indenpendencies hold. We can use the `dagitty` function `impliedConditionalIndependencies` to see those for the MCAR and MAR cases above (We don't need `dagitty` in this case, but it is usefull for more complex DAGs.):
+
+```{r impl_cond_ind}
+impliedConditionalIndependencies(mcar_dag)
+impliedConditionalIndependencies(mar_dag)
+```
+
+Unsurprisingly, the MCAR assumptions implies more independencies. In particular, only the MCAR model assumes that participation (R~O~) is indpendent of age (A). If we want to test this assumption for our data, we can simply run a regression model `lm(R_o ~ E)` and expect that the coefficient for A is zero. The next few lines of code simulate data from the MCAR and MAR models, each time assuming that the effect size for each path is 0.5, and check the implied conditional independency "A \_||\_ R_O" that holds only for the MCAR model. 
+
+```{r test_impl_cond_ind, fig.height=3, fig.width=7.5}
+
+layout(matrix(c(1,0,2,3,3,3),ncol = 2),
+       widths = c(.25,.75),
+       heights = c(.45,.1,.45))
+
+data_mar = simulateSEM(mar_dag,
+                       b.default = .5)
+data_mcar = simulateSEM(mcar_dag,
+                        b.default = .5)
+
+fit_mar = lm(R_O ~ E, data_mar)
+fit_mcar = lm(R_O ~ E, data_mcar)
+
+
+drawdag(mcar_dag)
+mtext("MCAR",side = 1, line = -1.25,adj = 0)
+drawdag(mar_dag)
+mtext("MAR", side = 1, line = -1.25,adj = 0)
+coefplot2(fit_mcar,
+          fit_mar)
+
+```
+
+We see that the regression coeficient for E is not in a region of practical equivalence of +/- .1. Therefor, the assumptions of independence of E and R_O does not hold for the data from the MAR DAG and we cannot simply do a complete case analysis for this data.
+
+We can also check if the assumption of MAR holds. First, lets look at two new examples of a MAR and MNAR situation:
+
+```{r MAR2_MNAR2, fig.height=3, fig.width=6}
+mnar2_dag = dagitty(
+  "
+  E  E @1,0
+  O  U @0,1
+  A  1 @-1,0
+  O* O @1,2
+  R_O A @2,1
+  M 1 @1,1
+  M2 U @1,.5 
+
+  A O
+  O M
+  M R_O
+  E O
+  O O*
+  R_O O*
+  O M2
+  M2 R_O
+  ")
+
+
+mar2_dag = dagitty(
+  "
+  E  E @1,0
+  O  U @0,1
+  A  1 @-1,0
+  O* O @1,2
+  R_O A @2,1
+  M 1 @1,1
+  
+  A O
+  O M
+  M R_O
+  E O
+  O O*
+  R_O O*
+  ")
+
+par(mfrow = c(1,2))
+drawdag(mnar2_dag)
+mtext("MNAR2",1,adj = 0)
+drawdag(mar2_dag)
+mtext("MAR2",1,adj = 0)
+
+impliedConditionalIndependencies(mnar2_dag)
+impliedConditionalIndependencies(mar2_dag)
+
+
+```
+
+Lets assume that the data were in fact collect in scenario MNAR2, but we assume that we are in scenario MAR2 (because if "have to" assume MAR in order to believe that we can actually deal with missingness). Only if scenario MAR2 is true, E is independent of R~O~ when we adjust for M. So we can test this:
+
+```{r impl_cond_ind2, fig.width=5, fig.height=4}
+data_mnar2 = simulateSEM(mnar2_dag,b.default = .5)
+lmfit = lm(formula = R_O ~ A + M, data = data_mnar2)
+cis = confint(lmfit)
+par (mar=c(3,6,.1,1), mgp=c(2,.7,0), tck=-.01)
+plot(0, type = "n",
+     ylim = c(.5,3.5),
+     xlim = range(cis), 
+     yaxt = "n", ylab = "",
+     xlab = "standardized beta")
+axis(2,at = 1:3, labels = rownames(cis), las = 2)
+rect(xleft = -.1,ybottom = 0,xright = .1,ytop = 5,
+     col = adjustcolor("green4",alpha = .3), border = NA)
+abline(v = 0)
+segments(x0 = cis[,1],x1 = cis[,2],y0 = 1:3)
+points(coef(lmfit),1:3, pch = 16, cex = 2)
+summary(lmfit)
+```
+
+
 ## Methods to deal with missing data
+
+Before we introducing methods to deal with missing data, let's mention what is not really OK: Imputation of missing data with the mean or median of the non-missimng data might be convenient, but is typically not OK. This might work when the data are MCAR. But this is certainly not the right way when missingness is MAR.
+
+
+One might think that it is the best to just use list-wise deletion (complete case analysis) when the data is MCAR. Indeed, this would not introduce bias. But becuase we would be throwing away lots of data, the uncertainty (CIs of parameters estimated) in the later ananlysis could be larger than neccessary. Therefore, it can be useful to not simply do a complete case analysis when data is MCAR.
+
+Some authors give the name _ad hoc techniques_ to methods that somehow deal with missing data, but do not come with a theorertically grounded theory of why they should work. Among these methods are listwise deletion, pairwise deletion, and mean/median/mode imputation. We will not look further into these methods.
+
+_All statistical methods to "really" deal with missing data assume that missingness is MAR._ Im am aware of following ways to substantially deal with missing data:
+
+* Full information maximum likelihood (FIML)
+* Multiple imputation (MI). Im MI, the analyst uses methods like Multiple Imputation by Chained Equations (MICE) or Hot Deck to generate replicates of the orginial data set, whereby in each replicate the missing data are replaced with similar but not identical imputated values. The motivation of using multiple replicates is to incorporate uncertainty about the imputed values into the analysis.
+
+A FIML approach is typically used for estimation of structural equation models (SEMs). This works well here, because normally distributed latent variables are central in SEMs, which fits well with the fact that the FIML approach typically involves estimating the multivariate normal distribution for the involved variables. However, when variables in a model are categorical (gender, place of living, ...) the FIML approach is much harder to implement. Indeed, a short google search suggests that there is no plug and play software that reliably implements FIML also for cateogorical data ([see e.g. here](https://stats.stackexchange.com/questions/51006/full-information-maximum-likelihood-for-missing-data-in-r)). 
+
+So even while some strongly favor FIML ([see e.g. here](https://statisticalhorizons.com/ml-is-better-than-mi)), authoritative reviews tend to point out that MI is better suited to situations where categorical variables are involved.
+
+
+```{r fiml_regression}
+
+# https://github.com/wmmurrah/lavaanFIML/wiki/2.-Regression-Analysis
+
+```
+
+
+
+
 
 ## Dealing with missing data in R
 
