@@ -31,3 +31,21 @@ coefplot2 = function(fit1,fit2) {
          legend = c("MCAR","MAR"),
          ncol = 2, cex = 1.5)
 }
+
+
+sim_mDAG = function(dag, b.default = .5, N = 1000) {
+  my_latents = latents(dag)
+  latents(dag) = ""
+  d = simulateSEM(dag,b.default = b.default, N = N,standardized = F)
+
+  for (v in my_latents) {
+    d[,paste0(v,"*")] = d[,v]
+    if (paste0("R_",v) %in% names(d)) {
+      d[,paste0("R_",v)] = d[,paste0("R_",v)] > -1
+      d[!d[,paste0("R_",v)],paste0(v,"*")] = NA  
+    }
+    
+  }
+  
+  return(d)
+}

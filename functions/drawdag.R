@@ -9,7 +9,7 @@ drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="b
   }
   if(length(latents(x)) > 0) {
     col_shapes = "grey"
-    shapes = as.list(rep("fc",2))
+    shapes = as.list(rep("fc",length(latents(x))))
     names(shapes) = latents(x)
   }
   labels <- names(coords$x)

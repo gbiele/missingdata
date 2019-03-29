@@ -85,6 +85,7 @@ E R_O
 E O
 O O*
 R_O O*
+A R_O
 "
 )
 drawdag(mar_dag)
@@ -127,7 +128,7 @@ title("MNAR",line = -1)
 
 A disctinction of these types of missingness is important, because they determine if we can still estimate "unbiased" effects and how we need to handle missing data in order to obtain unbiased effects. 
 
-In particular, in _MNAR_ describes our data, there is typically little we can do [^1]: There are excpetions, see Mohan & Pearl, 2018. To illustrate the problem lets simulate data for the MNAR situation:
+In particular, in _MNAR_ describes our data, there is typically little we can do ^[There are excpetions, see Mohan & Pearl, 2018. To illustrate the problem lets simulate data for the MNAR situation]: 
 
 ```{r sim_MNAR, fig.height=4.5, fig.width=4.5}
 library(boot)
@@ -269,24 +270,83 @@ summary(lmfit)
 ```
 
 
+## Sometimes, listwise delection is OK
+
+When dealing with missing data, it makes a big difference is missingness is associated with the outcome or predictor variables. If there is only one predictor and missingness depends on the precitor variable ([more here](http://statisticalhorizons.com/listwise-deletion-its-not-evil)). Here is an example DAG:
+
+```{r mnar_predictor, fig.height=3, fig.width=3}
+mnarpred_dag = dagitty(
+"
+E  E @1,0
+O  U @0,1
+A  E @-1,0
+O* O @1,2
+R_O A @2,1
+U U @2,0
+
+A O [beta = 1]
+E O
+R_O O*
+E U
+U R_O
+"
+)
+#mnarpred_dag = gsub("E -> U","E -> U [beta = 1]", mnarpred_dag)
+#mnarpred_dag = gsub("U -> R_O","U -> R_O [beta = 1]", mnarpred_dag)
+drawdag(mnarpred_dag)
+
+```
+
+
+And here the results of an analysis of the full data set and the complete cases:
+```{r simmnar_predictor, fig.height=4.5, fig.width=4.5}
+mnarpred_data = sim_mDAG(mnarpred_dag)
+tmp = list2env(as.list(mnarpred_data),envir = .GlobalEnv)
+
+par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01) 
+plot(E,O, pch = 16, col = "black")
+points(E[!R_O],O[!R_O], pch = 4, col = "red", cex = .75)
+abline(lm(O~E), col = "black", lwd = 2)
+abline(lm(`O*`[R_O]~E[R_O]), col = "black", lwd = 2)
+abline(lm(`O*`[R_O]~E[R_O]), col = "red", lwd = 2, lty = 2)
+legend("bottomright",
+       pch = c(16,4),
+       col = c("black","red"),
+       legend = c("full data","missing cases"),
+       bty = "n")
+```
+
+In the case of only one exposure that also determines missingness, one could hence simply analyse the complete cases ^[Note that using only complete cases would bias the error variance upwards. In contrast, mean imputation would bias error variance downwards]. However, if there a multiple predictors in a model, it can quickly become impractical to delete every case with a missing value in one of the predictor variables.
+
+To summarize this general section about missing data:
+
+* MCAR, MAR, and MNAR are three different types of missingness, each with different consequences for the data analysis
+* A good workflow for statistical analysis includes making assumptions about missing data explicit. Missingness graphs using directed acyclic graphs are useful for this. (one might find out that complete case analysis is OK ^[I guess this is rearely the case] )
+* It is good practice to check if the data at hand are consistent with the assumptions made (though a veryfied assumption is no longer an assumptions).
+
+
 ## Methods to deal with missing data
 
-Before we introducing methods to deal with missing data, let's mention what is not really OK: Imputation of missing data with the mean or median of the non-missimng data might be convenient, but is typically not OK. This might work when the data are MCAR. But this is certainly not the right way when missingness is MAR.
+Before we introducing methods to deal with missing data, let's mention what is not really OK: Imputation of missing data with the mean or median of the non-missimng data might be convenient, but is typically not OK. This can work when the data are MCAR or missingness depends only on predictor but not at all on outcome variables. But this probably is a rare case.
 
-
-One might think that it is the best to just use list-wise deletion (complete case analysis) when the data is MCAR. Indeed, this would not introduce bias. But becuase we would be throwing away lots of data, the uncertainty (CIs of parameters estimated) in the later ananlysis could be larger than neccessary. Therefore, it can be useful to not simply do a complete case analysis when data is MCAR.
+One might think that it is the best to just use list-wise deletion (complete case analysis) when the data is MCAR. Indeed, this would not introduce bias. But because we would be throwing away lots of data, the uncertainty (CIs of parameters estimated) in the later ananlysis could be larger than neccessary. Therefore, it can be useful to not simply do a complete case analysis when data is MCAR.
 
 Some authors give the name _ad hoc techniques_ to methods that somehow deal with missing data, but do not come with a theorertically grounded theory of why they should work. Among these methods are listwise deletion, pairwise deletion, and mean/median/mode imputation. We will not look further into these methods.
 
 _All statistical methods to "really" deal with missing data assume that missingness is MAR._ Im am aware of following ways to substantially deal with missing data:
 
-* Full information maximum likelihood (FIML)
+* Full information maximum likelihood (FIML). In short, this approach models the joint likelihood of all available data (typically using a multivariate normal distribution) plus parameters of interest like path (or regression) coefficients.
+* Expectation maximization (EM). _I know little about this!_
 * Multiple imputation (MI). Im MI, the analyst uses methods like Multiple Imputation by Chained Equations (MICE) or Hot Deck to generate replicates of the orginial data set, whereby in each replicate the missing data are replaced with similar but not identical imputated values. The motivation of using multiple replicates is to incorporate uncertainty about the imputed values into the analysis.
 
 A FIML approach is typically used for estimation of structural equation models (SEMs). This works well here, because normally distributed latent variables are central in SEMs, which fits well with the fact that the FIML approach typically involves estimating the multivariate normal distribution for the involved variables. However, when variables in a model are categorical (gender, place of living, ...) the FIML approach is much harder to implement. Indeed, a short google search suggests that there is no plug and play software that reliably implements FIML also for cateogorical data ([see e.g. here](https://stats.stackexchange.com/questions/51006/full-information-maximum-likelihood-for-missing-data-in-r)). 
 
 So even while some strongly favor FIML ([see e.g. here](https://statisticalhorizons.com/ml-is-better-than-mi)), authoritative reviews tend to point out that MI is better suited to situations where categorical variables are involved.
 
+
+### FIML regression in R with lavaan.
+
+The [lavaan](https://cran.rstudio.com/web/packages/lavaan/index.html) package was developped to fit SEM model in R. However, it can also be used to fit _linear_ FIML regression. 
 
 ```{r fiml_regression}
 
