@@ -24,8 +24,15 @@ dag = mar_dag
 
 my_latents = latents(dag)
 latents(dag) = ""
-d = simulateSEM(dag,b.default = b.default, N = N)
+
+N = 1000
+A = rnorm(N)
+E  = rnorm(N)
+O = scale(A*E + rnorm(N))
+R_O = E + rnorm(N)
+`O*` = O
+O[R_O < 0] = NA
 
 d = sim_mDAG(mar_dag, b.default = .5)
-lm(`O*` ~  E, d)
-lm(O ~  E, d)
+lm(`O*` ~  E*A)
+lm(O ~  E*A)
