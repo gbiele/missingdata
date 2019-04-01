@@ -1,7 +1,7 @@
-coefplot2 = function(fit1,fit2) {
+coefplot2 = function(fit1,fit2, ttl = "") {
   confint1 = confint(fit1,level = .9)
   confint2 = confint(fit2,level = .9)
-  par (mar=c(3,5,.1,1), mgp=c(2,.7,0), tck=-.01)
+  par (mar=c(3,6,1.25,1), mgp=c(2,.7,0), tck=-.01)
   ylim = c(.75,2.75)
   plot(0,type = "n",
        xlim = range(cbind(confint2,
@@ -30,6 +30,7 @@ coefplot2 = function(fit1,fit2) {
          col = c("black","red"),
          legend = c("MCAR","MAR"),
          ncol = 2, cex = 1.5)
+  mtext(paste0("Model: ",ttl), line = 0)
 }
 
 
@@ -41,7 +42,7 @@ sim_mDAG = function(dag, b.default = .5, N = 1000) {
   for (v in my_latents) {
     d[,paste0(v,"*")] = d[,v]
     if (paste0("R_",v) %in% names(d)) {
-      d[,paste0("R_",v)] = d[,paste0("R_",v)] > -1
+      d[,paste0("R_",v)] = d[,paste0("R_",v)] > 0
       d[!d[,paste0("R_",v)],paste0(v,"*")] = NA  
     }
     

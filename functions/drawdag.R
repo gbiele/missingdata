@@ -1,5 +1,5 @@
 # from  https://github.com/rmcelreath/rethinking/blob/Experimental/R/drawdag.R
-drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="black" , cex=1 , lwd=1.5 , goodarrow=TRUE , xlim , ylim , shapes , col_shapes , radius=4 , ... ){ 
+drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="black" , cex=2 , lwd=1.5 , goodarrow=TRUE , xlim , ylim , shapes , col_shapes , radius= 5 , ... ){ 
   require(dagitty)
   x <- as.dagitty( x )
   dagitty:::.supportsTypes(x,c("dag","mag","pdag"))
@@ -123,10 +123,11 @@ drawdag <- function( x , col_arrow="black" , col_segment="black" , col_labels="b
       text( coords$x[k],
             -coords$y[labels[k]],
             eval(parse(text=paste0("expression(",a,"[",b,"]",")"))),
-            cex=cex , col=col_labels )
+            cex=cex*.9 , col=col_labels,
+            xpd = T)
     }
   } else {
-    text( coords$x, -coords$y[labels], labels , cex=cex , col=col_labels )
+    text( coords$x, -coords$y[labels], labels , cex=cex , col=col_labels, xpd = T )
   }
   
     
