@@ -1,7 +1,7 @@
 ---
 title: "Missing data in R"
 author: "Guido Biele"
-date: "27 mars 2019"
+date: "April 2019"
 output: html_document
 ---
 
@@ -523,6 +523,8 @@ An alternative to the FIML approach is to use multiple imputation by chained equ
 * FIML is preferred when missingness does not dependt on auxiliary variables, the association between the involved variables is well described by a multivariate normal distribution, and there are no strong non-linearities (in the associations between variables)
 * MI is preferred when the imputation model has many variables not needed in the effect model, variables are not continuous, and interaction effects are important
 
+One good reason to use `mice` is the extensice documentation. Among other things there is an online [book](https://stefvanbuuren.name/fimd/) with lots of usefull explanations and example code also for nore advances analyses, and a set of [vignettes](https://www.gerkovink.com/miceVignettes/) that serve as a moderately long introduction.
+
 As a simple introduction to an analysis with mice, we analyse the MAR data det we just analysed with FIML. We start by generating multiple impuations of our data set:
 
 ```{r mice_imputation}
@@ -753,7 +755,8 @@ OK, we have a model that is totally garbage, and yet has totally fine fit indice
 Now lets try multiple imputation. To make things more realistic, we add a bit more missing data (completely random).
 
 ```{r mice2}
-idata = mar_interaction_data[,c("E","M","L","Ox")]
+library(VIM)
+idata = mar_interaction_data[,c("E","M","L","Ox","R_O")]
 for (v in 1:3)
   idata[sample(N,N*.1),v] = NA
 
@@ -775,7 +778,7 @@ The basic command to impute data is stil simple:
 
 my_imputed_data2 = mice(
   idata, # data with missing values
-  m = 5,                     # number of imputed data sets
+  m = 3,                     # number of imputed data sets
   maxit=25,                  # number of iterations in a chain
   seed=500,
   printFlag = F)
@@ -790,14 +793,31 @@ my_imputed_data2$predictorMatrix
 my_imputed_data2$formulas
 ```
 
-This model does not take into account interaction terms. `mice` uses the concept of _passive imputation_ to insure that erived variables (like interactions) are consistent with imputations throughout the imputation process. Detailed information about specifyingh such more complex imputation models can be found [here](https://stefvanbuuren.name/fimd/sec-knowledge.html)
+Lets see if the results look reasonable by looking at density and scatter plots.
 
+```{r impute_mice2_plots}
+densityplot(my_imputed_data2)
+xyplot(my_imputed_data2,
+       Ox ~ E | L,
+       type = c("p", "smooth"))
+```
+
+
+Definitively not great, rather horrible. The mian reason is that model does not take into account interaction terms. `mice` uses the concept of _passive imputation_ to insure that derived variables (like interactions) are consistent with imputations throughout the imputation process. Detailed information about specifyingh such more complex imputation models can be found [here](https://stefvanbuuren.name/fimd/sec-knowledge.html), including a section about [efficient imputations of sum-scores](https://stefvanbuuren.name/fimd/sec-knowledge.html#sec:sumscores). To set up passive imputation of an interaction variable one has to:
+
+* intitalize hat variable
+* specify a method for that variable, i.e. define an R expression that tell mice how to generate the derived variable
+* adjust the prediction matrix to make sure the derived variable is only used as a predictor where needed
+
+
+In addition we also add a variable that codes if Ox was missing as a predictor (a trick from the [mi package](https://cran.rstudio.com/web/packages/mi/)).
 ```{r mice2_add_method}
-idata$iEL = idata$E * idata$M
+idata$iEL = as.vector(idata$E * scale(as.numeric(idata$L)))
 method = make.method(idata)
 
 expr = expression(scale(as.numeric(L)) * E)
 method["iEL"] = paste("~I(", expr, ")", sep = "")
+method["R_O"] = "logreg"
 
 pred = make.predictorMatrix(idata)
 pred[c("E","L","M","Ox"),"iEL"] = 0
@@ -812,15 +832,26 @@ Now we have define the interaction predictor and added a method of how to contru
 imp <- mice(idata,
             meth = method,    # method for passive imputation
             pred = pred,      # matrix of predictors for all variables
-            m = 1,            # number of imputed data sets
-            maxit=25,         # number of iterations in a chain
+            m = 3,            # number of imputed data sets
+            maxit=50,         # number of iterations in a chain
             seed=500,
             printFlag = F)
 
 ```
 
-And we plot the resulting imputations
+Now that we have a model that is a bit more complex we go through more "checking" steps. MICE is a montecarlo algorithm, so we need to check convergence. We do this by plotting how parameters change over time (there are more sophisticated ways to do this, like comparing within and betweeen chain variance, but MICE does not support those.)
 
+```{r mice_convergence}
+plot(imp)
+```
+
+And we use srip plots to check if all variables have plausible values (i.e. they are nor outside the range of the observed values)
+
+```{r mice_stripplot}
+stripplot(imp)
+```
+
+Density plots do a similar job.
 ```{r mice2_plot1}
 densityplot(imp)
 ```
@@ -835,15 +866,16 @@ tp = xyplot(O ~ E | L,
        mar_interaction_data,
        type = c("p", "smooth"),
        index.cond=list(c(1:5)))
+tp
 ```
 
-While the imputation was not perfect (thre is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis Without these imputed data points naturally underestimates the association between E and O.
+While the imputation was not perfect (thre is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis without these imputed data points naturally underestimates the association between E and O.
 
 
 Now we re-do the imputation to generate more data sets and then run the analysis.
 
 ```{r}
-imp <- mice(idata.ext,
+imp <- mice(idata,
             meth = method,    # method for passive imputation
             pred = pred,      # matrix of predictors for all variables
             m = 50,           # number of imputed data sets
@@ -853,8 +885,16 @@ imp <- mice(idata.ext,
 
 MI_fit2 = with(imp,
               lm(Ox ~ E))
-summary(pool(MI_fit2), conf.int = T
+summary(pool(MI_fit2), conf.int = T)
 ```
 
 
-The estimate from imputed data is not as good as we 
+The estimate from imputed data are not perfect, but they are certainly better than the alternatives.
+
+
+## Resources
+
+* R [task view](https://cran.r-project.org/web/views/MissingData.html) about missing data
+* Stef van Buren's (author of `mice`) [book](about multiple imputations)
+* [Vignettes](https://www.gerkovink.com/miceVignettes/) for using `mice` 
+* Bayesian [joint estimation of imputation and effect model](https://cran.r-project.org/web/packages/brms/vignettes/brms_missings.html) with brms
