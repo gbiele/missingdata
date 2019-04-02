@@ -189,28 +189,17 @@ summary(lm_observed)
 The degrees of freedom in the outputs above shows us the difference in cases included in the analysis. The next figure shows regression coefficients and confidence intervals for both analysis. [Also, I wish somebody could remove the ridiculous significance codes!]
 
 ```{r MCAR_automatic_listwise_deletion_plot, fig.width=4, fig.height=3}
-confints = cbind(confint(lm_population)[2,],
-                 confint(lm_observed)[2,])
-effect_size = c(coefficients(lm_population)[2],
-                coefficients(lm_observed)[2])
-
-par (mar=c(3,1,1,1), mgp=c(2,.7,0), tck=-.01)
-plot(effect_size,
-     1:2,
-     ylim = c(0.5,2.5),
-     xlim = range(confints),
-     yaxt = "n", ylab = "")
-segments(x0 = confints[1,],
-         x1 = confints[2,],
-         y0 = 1:2)
-text(effect_size[1],1,"from population", pos = 1)
-text(effect_size[2],2,"from complete cases", pos = 3)
+es = rbind(truth =          get_esci(lm_population)[2,],
+           complete_cases = get_esci(lm_observed)[2,])
+plot_coefs(es)
 ```
 
 
-### Testing assumptions about missingness
+## Testing assumptions about missingness
 
 The DAGs shown above are important, because they make it (relatively) easy to detect what type of missingness is present in the data. This is relevant because all methods used to deal with missing data build on some assumptions. If these assumptions are violated, our analysis will still produce invalid results, even if it somehow accounts (tries to...) for missingness. Therefor, one should always check if the assumptions hold.
+
+### MCAR vs MAR
 
 One way to check underlying assumptions is to see if the implied conditional indenpendencies hold. We can use the function `impliedConditionalIndependencies` from the [dagitty package](https://cran.r-project.org/web/packages/dagitty/) to see those for the MCAR and MAR cases above (We don't need `dagitty` in this case, but it is useful for more complex DAGs.):
 
@@ -248,9 +237,14 @@ coefplot2(fit_mcar,
 
 We see that the regression coefficient for E is not in a region of practical equivalence of +/- .1. Therefor, the assumptions of independence of E and R_O does not hold for the data from the MAR DAG and we cannot simply do a complete case analysis for this data.
 
+### Assessing _equivalence_ is required to evaluate conditional indendence
+The use of a region of practical equivalence is rooted in the procedure for [equivalence tests](https://en.wikipedia.org/wiki/Equivalence_test). If we want to show that a regression coeficient is (close to) zero, it is not sufficient to show that it is not significance. Rather, one has to show that the regression coefficient is whith high certainty very small. How small "very small" is should generally be determined by subject matter experts. One possible rule of thumb is that an effect that is only 1/10 of a practically meaningfull effect has practically equivalent with zero. Another rule of thumb could be that such a very small effect should be smaller than the expected effect size of your exposure outcome association ^[i.e. don't say an effect of .05 +/- .02 is practically equivalent with zero when assessing conditional independence, and later call an exposure outcome association of .06 +/- .03 "signicant"]. 
+In the application above, I chose an effect size of smaller than 0.1 SMD to be parctically equivalent with 0. Tests for equivalence work by checking if the 90% CIs lie within the ROPE. I you need p-values for this, you can use [equivalence](https://cran.r-project.org/web/packages/equivalence/) the package.
+
+### MAR vs MNAR
 We can also check if the assumption of MAR holds. First, lets look at two new examples of a MAR and MNAR situation:
 
-```{r MAR2_MNAR2, fig.height=4, fig.width=8}
+```{r MAR2_MNAR2, fig.height=3, fig.width=6}
 mnar2_dag = dagitty("
 A 1 @1,0
 O U @0,1
@@ -290,9 +284,9 @@ R_O O*
 
 par(mfrow = c(1,2))
 drawdag(mnar2_dag)
-mtext("MNAR2",1,adj = 0)
+mtext("MNAR2",1,line = -1,adj = 0)
 drawdag(mar2_dag)
-mtext("MAR2",1,adj = 0)
+mtext("MAR2",1,line = -1,adj = 0)
 
 impliedConditionalIndependencies(mnar2_dag)
 impliedConditionalIndependencies(mar2_dag)
@@ -374,14 +368,14 @@ In the case of only one exposure that also determines missingness, one could hen
 To summarize this general section about missing data:
 
 * MCAR, MAR, and MNAR are three different types of missingness, each with different consequences for the data analysis
-* A good workflow for statistical analysis includes making assumptions about missing data explicit. Missingness graphs using directed acyclic graphs are useful for this. (one might find out that complete case analysis is OK ^[I guess this is rarely the case] )
-* It is good practice to check if the data at hand are consistent with the assumptions made (though a verified assumption is no longer an assumptions).
+* A good workflow for statistical analysis includes making assumptions about missing data explicit. Missingness graphs using DAGs are useful for this. (one might find out that complete case analysis is OK ^[I guess this is rarely the case] )
+* It is good practice to check if the data at hand are consistent with the assumptions made (though, as some might nitpick, a verified assumption is no longer an assumptions).
 
 
 ## Methods to deal with (at least) MAR data
 
 
-### Ad hoc "methods"
+### Don't use ad hoc "methods"
 
 Before we introducing methods to deal with missing data, let's mention what is not really OK: Imputation of missing data with the mean or median of the non-missing data might be convenient, but does not work OK. The next figure illustrates why:
 
@@ -446,7 +440,6 @@ es = rbind(truth =                   get_esci(lm_population)[2,],
            complete_cases_adjusted = get_esci(lm_cc_adjusted)[2,])
 
 plot_coefs(es)
-
 ```
 
 As expected, the standard error for the adjusted model based on complete data is largers (less data, more predictors).
@@ -478,8 +471,9 @@ drawdag(mar_mediator_dag)
 
 Here, we can use the [lavaan](https://cran.rstudio.com/web/packages/lavaan/index.html) packagem which was (and is) developed to fit SEM model in R. However, it can also be used to fit _linear_ FIML regression. Lets first look at the true association and association from futile methods to deal with missing data:
 
-```{r wrong_regressions_mar}
-my_data = sim_mDAG(mar_mediator_dag, seed = 11)
+```{r wrong_regressions_mar, fig.width=4, fig.height=3}
+my_data = sim_mDAG(mar_mediator_dag,
+                   seed = 11)
 
 
 es = rbind(truth =              get_esci(lm(O ~ E, my_data))[2,],
@@ -487,20 +481,20 @@ es = rbind(truth =              get_esci(lm(O ~ E, my_data))[2,],
            complete_cases_adj = get_esci(lm(`O*` ~ E + M, my_data))[2,])
 
 plot_coefs(es)
-
 ```
 
 
-The correct total effect of E on O is `r es[1,1]`. To recover this, we fit a FIML regression that models the effect of E and O and, importantly, the covariances for E, O, and M:
 
-```{r FIML_regression}
+The correct total effect of E on O is `r round(es[1,1],digits = 2)`. To recover this, we fit a FIML regression that models the effect of E and O and, importantly, the covariances for E, O, and M:
+
+```{r FIML_regression, fig.width=4, fig.height=3}
 library(lavaan)
 
 model <- '
-# Regression model 
+# regression model 
 Ox ~ E
 
-# Variances
+# co-variances
 Ox ~~ M
 E ~~ M
 '
@@ -514,16 +508,353 @@ summary(FIML_fit)
 
 es_FIML = parameterEstimates(FIML_fit)[1,c("est","ci.lower","ci.upper")]
 colnames(es) = names(es_FIML)
-es = rbind(es,
-           es_FIML)
+es = rbind(es, es_FIML)
 rownames(es)[4] = "FIML"
 
 plot_coefs(es,
            clrs = c("green4","black","black","orange"))
 ```
 
+Even if the FIML is not perfect, it is better than the complete case analysis. [With more time, one should add some simulations to show that the FIML approach is unbiased and the complete case approach not. Same for all other methods]
+
+### Multiple Imputation by Chained Equations with the mice package
+
+An alternative to the FIML approach is to use multiple imputation by chained equation. The most popular r packeg to implement this is [mice](https://cran.rstudio.com/web/packages/mice/index.html). Some people seem to have [strong opinions about FIML vs multiple imputations](https://statisticalhorizons.com/ml-better-than-mi). A fair summary seems to be that
+* FIML is preferred when missingness does not dependt on auxiliary variables, the association between the involved variables is well described by a multivariate normal distribution, and there are no strong non-linearities (in the associations between variables)
+* MI is preferred when the imputation model has many variables not needed in the effect model, variables are not continuous, and interaction effects are important
+
+As a simple introduction to an analysis with mice, we analyse the MAR data det we just analysed with FIML. We start by generating multiple impuations of our data set:
+
+```{r mice_imputation}
+library(mice)
+
+my_imputed_data = mice(
+  my_data[,c("Ox","E","M")], # data with missing values
+  m = 5,                     # number of imputed data sets
+  maxit=25,                  # number of iterations in a chain
+  meth='pmm',                # imputation method
+  seed=500,
+  printFlag = F)
+```
+
+Before we use the data, we should check the imputation worked. One way to do this is to show densities and scatter plots with observed and imputed data in different colors.
+
+```{r mice_plots, fig.width=4, fig.height=4}
+par(mfrow = c(2,2))
+densityplot(my_imputed_data)
+xyplot(my_imputed_data,Ox ~ E)
+xyplot(my_imputed_data,Ox ~ M)
+```
+
+Note that the lower mean for the impueted data is expected, because our data generateing model specified that cases with low exposure values were more likely to miss the outcome variable.
 
 
+Five imputations were OK for visualization purposes, but we need more for the real analysis.
 
-## Dealing with missing data in R
+```{r mice_imputationb}
+my_imputed_data = mice(
+  my_data[,c("Ox","E","M")], # data with missing values
+  m = 100,                    # number of imputed data sets
+  maxit=50,                  # number of iterations in a chain
+  seed=500,
+  printFlag = F)
+```
 
+
+Now we can also better visualize what the _multipel_ means in multiple imputation. one missing value receives in each imputed data set a different value:
+
+```{r mice_imputations_compare1, fig.width=8, fig.height=6}
+idx_missing = which(!my_data$R_O)
+par(mfrow = c(5,5), mar = c(2,.5,.5,.5),mgp=c(2,.7,0), tck=-.01)
+for (k in 1:25) {
+  hist(t(my_imputed_data$imp$Ox[k,]),
+       xlab = "",
+       ylab = "",
+       bty = "n",
+       yaxt = "n",
+       main = "")
+  abline(v = my_data$O[idx_missing[k]], col = "green4", lwd = 2)
+}
+```
+
+```{r mice_imputations_compare2, fig.width=4, fig.height=4}
+par(mfrow = c(1,1),mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01)
+plot(my_data$O[idx_missing],
+     rowMeans(my_imputed_data$imp$Ox),
+     xlab = "truth",
+     ylab = "imputed")
+```
+
+Now that we have checked the results of the imputation, we run the analysis with all imputed data sets:
+
+```{r mice_analysis}
+MI_fit = with(my_imputed_data,
+              lm(Ox ~ E))
+```
+
+The object MI_fit is of the class [mira](https://stefvanbuuren.name/mice/reference/mira-class.html), and contains in slote 4 for each imputed data set the result of the regression model we specified. We can look at all coeffcients:
+
+```{r mice_summary}
+summary(MI_fit)
+```
+
+And we can look at the pooled the results:
+
+```{r mice_pooled_summary, fig.width=4, fig.height=3}
+s = summary(pool(MI_fit), conf.int = T)
+s[,1:5]
+
+es_MI = s[2,c("estimate","2.5 %","97.5 %")]
+names(es_MI) = names(es)
+es = rbind(es, es_MI)
+rownames(es)[5] = "MI"
+
+plot_coefs(es,
+           clrs = c("green4","black","black","orange","blue"))
+
+
+```
+
+### Missing data and non-linear effects
+In the previous example, MI and FIML lead more or less to the same results, because the involved variables are in fact multivariate normal and no interaction effects were present. In the final example we shall investigate such and example. The following situation is the same as above, except that we have an additional variable L for county (fylke). The idea is that the outcome obesity and participation could depend on where one lives.
+
+```{r mar_interaction_dag}
+mar_interaction_dag = dagitty("
+M  1 @1,0
+O  U @0,1
+E  1 @-1,0
+O* O @1,2
+R_O 1 @2,1
+L 1 @1,1
+  
+M O R_O
+E O M
+O O*
+R_O O*
+L O R_O
+")
+drawdag(mar_interaction_dag)
+```
+
+In all previous analyses we could use dagitties simulateSEM function to generate data from a DAG, because we treated data as multivariate normal. However, we can't do this now, because
+* C is a categorical variables and
+* the effect of C on O is assumed to be that of an effect modifier.
+
+The followig code generates data from this model:
+
+```{r mar_interaction_sim}
+N = 500
+# we start with the exogeneous variables:
+E = rnorm(N)
+# now the endogenous variables
+M = E + rnorm(N)
+# cases come from 5 counties
+L = cut(runif(N), 
+        breaks = seq(-.001,1.001,length = 6),
+        labels = paste0("L",1:5),
+        ordered_result = T)
+# O depends on M and E, whereby the effect of E depends on L
+O = M - E * scale(as.numeric(L))*2 + rnorm(N)
+# R_O depends on M plus a non-linear effect of C
+R_O = M + poly(as.numeric(L),2) %*% c(20,20) + rnorm(N)
+R_O = R_O > 0
+# now we can define the observed data
+`O*` = O
+`O*`[!R_O] = NA
+Ox = `O*`
+
+mar_interaction_data = data.frame(E = E, M = M,
+                                  O = O, L = L, R_O = R_O,
+                                  `O*` = `O*`, Ox = Ox) 
+```
+
+Now we can look at the association between E and O, stratified by participation.
+
+```{r plot_interaction_sim, fig.height=4.5, fig.width=4.5}
+par (mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01)
+bg = sapply(R_O,
+            function(x)
+              ifelse(x == T,
+                     "black",
+                     "white"))
+plot(E,O, pch = 21, bg=adjustcolor(bg,alpha = .5), col = (!R_O)+1)
+abline(lm(O~E), col = "black", lwd = 2)
+abline(lm(`O*`[R_O]~E[R_O]), col = "black", lwd = 2, lty = 2)
+legend("bottomright",
+       pch = c(21,21),
+       col = c("black","red"),
+       pt.bg = c(1,0),
+       legend = c("observed","missing"),
+       bty = "n")
+
+```
+
+Obviously, we would get a biased estimate when using only complete cases. We also can't adjust for M, becasue M is a mediator. So lets try FIML:
+
+```{r FIMLi_fit, eval = F}
+model <- '
+# regression model 
+Ox ~ E
+
+# co-variances
+Ox ~~ M
+E ~~ M
+Ox ~~ L
+E ~~ L
+M ~~ L
+'
+
+FIMLi_fit <- sem(model,
+                mar_interaction_data,
+                missing='fiml',
+                meanstructure=TRUE, 
+                fixed.x=FALSE)
+summary(FIMLi_fit)
+
+```
+
+OK, this doesn't work (you can make it work in MPLUS). Let's just make a numeric variable Ln as a work-around:
+
+```{r FIMLi_fit_workaround}
+mar_interaction_data$Ln1 = scale(as.numeric(mar_interaction_data$L))
+mar_interaction_data$Ln2 = mar_interaction_data$Ln1^2
+
+model <- '
+# regression model 
+Ox ~ E
+
+# co-variances
+Ox ~~ M
+E ~~ M
+Ox ~~ Ln1
+E ~~ Ln1
+M ~~ Ln1
+'
+
+FIMLi_fit <- sem(model,
+                mar_interaction_data,
+                missing='fiml',
+                meanstructure=TRUE, 
+                fixed.x=FALSE)
+summary(FIMLi_fit)
+
+```
+
+So, the correct regression coeficient is `r round(coef(lm(O ~ E))[2],2)` and with the FIML model we get `r round(coef(FIMLi_fit)[1],2)`. How about fit measures for this model?
+
+```{r FIMLi_fit_fitmeasures}
+FM = fitMeasures(FIMLi_fit)
+FM[grep("tli|cfi|rmsea", names(FM))]
+```
+
+OK, we have a model that is totally garbage, and yet has totally fine fit indices. I hope this reinforces how important it is to carfully think about the data at hand, before fitting models (I whish I had understood this).
+
+
+Now lets try multiple imputation. To make things more realistic, we add a bit more missing data (completely random).
+
+```{r mice2}
+idata = mar_interaction_data[,c("E","M","L","Ox")]
+for (v in 1:3)
+  idata[sample(N,N*.1),v] = NA
+
+aggr_plot = aggr(idata,
+                 col=c('green4','red'),
+                 numbers=TRUE,
+                 sortVars=TRUE,
+                 labels=names(data),
+                 cex.axis=.7,
+                 gap=3,
+                 ylab=c("Histogram of missing data",
+                        "Pattern"))
+```
+
+
+The basic command to impute data is stil simple:
+
+```{r impute_mice2}
+
+my_imputed_data2 = mice(
+  idata, # data with missing values
+  m = 5,                     # number of imputed data sets
+  maxit=25,                  # number of iterations in a chain
+  seed=500,
+  printFlag = F)
+
+```
+
+Before we look at the results, lets check who mice did the imputations. 
+
+```{r mice_imputation_models}
+my_imputed_data2$method
+my_imputed_data2$predictorMatrix
+my_imputed_data2$formulas
+```
+
+This model does not take into account interaction terms. `mice` uses the concept of _passive imputation_ to insure that erived variables (like interactions) are consistent with imputations throughout the imputation process. Detailed information about specifyingh such more complex imputation models can be found [here](https://stefvanbuuren.name/fimd/sec-knowledge.html)
+
+```{r mice2_add_method}
+idata$iEL = idata$E * idata$M
+method = make.method(idata)
+
+expr = expression(scale(as.numeric(L)) * E)
+method["iEL"] = paste("~I(", expr, ")", sep = "")
+
+pred = make.predictorMatrix(idata)
+pred[c("E","L","M","Ox"),"iEL"] = 0
+pred["Ox","iEL"] = 1
+pred["Ox",c("E","L")] = 0
+pred
+```
+
+Now we have define the interaction predictor and added a method of how to contruct it from existing variables (We have also specified that L predicts only R_O and Ox. [^ We could also specify that O is predicted only by E, but because we are only interested in prediction here, and not regression coefficients, it is OK to keep M in]). Next, we use this method for the imputations.
+
+```{r mice2_impute}
+imp <- mice(idata,
+            meth = method,    # method for passive imputation
+            pred = pred,      # matrix of predictors for all variables
+            m = 1,            # number of imputed data sets
+            maxit=25,         # number of iterations in a chain
+            seed=500,
+            printFlag = F)
+
+```
+
+And we plot the resulting imputations
+
+```{r mice2_plot1}
+densityplot(imp)
+```
+
+Particularily interesting are the associations between O/Ox and E given L. We first look at the complete data and then at the imputed data.
+
+```{r mice2_plot2}
+xyplot(imp,
+       Ox ~ E | L,
+       type = c("p", "smooth"))
+tp = xyplot(O ~ E | L,
+       mar_interaction_data,
+       type = c("p", "smooth"),
+       index.cond=list(c(1:5)))
+```
+
+While the imputation was not perfect (thre is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis Without these imputed data points naturally underestimates the association between E and O.
+
+
+Now we re-do the imputation to generate more data sets and then run the analysis.
+
+```{r}
+imp <- mice(idata.ext,
+            meth = method,    # method for passive imputation
+            pred = pred,      # matrix of predictors for all variables
+            m = 50,           # number of imputed data sets
+            maxit=25,         # number of iterations in a chain
+            seed=500,
+            printFlag = F)
+
+MI_fit2 = with(imp,
+              lm(Ox ~ E))
+summary(pool(MI_fit2), conf.int = T
+```
+
+
+The estimate from imputed data is not as good as we 
