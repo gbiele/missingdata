@@ -2,7 +2,9 @@
 title: "Missing data in R"
 author: "Guido Biele"
 date: "April 2019"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -541,7 +543,7 @@ my_imputed_data = mice(
 
 Before we use the data, we should check the imputation worked. One way to do this is to show densities and scatter plots with observed and imputed data in different colors.
 
-```{r mice_plots, fig.width=4, fig.height=4}
+```{r mice_plots, fig.width=4, fig.height=3}
 par(mfrow = c(2,2))
 densityplot(my_imputed_data)
 xyplot(my_imputed_data,Ox ~ E)
@@ -620,7 +622,7 @@ plot_coefs(es,
 ### Missing data and non-linear effects
 In the previous example, MI and FIML lead more or less to the same results, because the involved variables are in fact multivariate normal and no interaction effects were present. In the final example we shall investigate such and example. The following situation is the same as above, except that we have an additional variable L for county (fylke). The idea is that the outcome obesity and participation could depend on where one lives.
 
-```{r mar_interaction_dag}
+```{r mar_interaction_dag, fig.height=3, fig.width=3}
 mar_interaction_dag = dagitty("
 M  1 @1,0
 O  U @0,1
@@ -639,8 +641,9 @@ drawdag(mar_interaction_dag)
 ```
 
 In all previous analyses we could use dagitties simulateSEM function to generate data from a DAG, because we treated data as multivariate normal. However, we can't do this now, because
-* C is a categorical variables and
-* the effect of C on O is assumed to be that of an effect modifier.
+
+* L is a categorical variables and
+* the effect of L on O is assumed to be that of an effect modifier.
 
 The followig code generates data from this model:
 
@@ -694,6 +697,7 @@ legend("bottomright",
 Obviously, we would get a biased estimate when using only complete cases. We also can't adjust for M, becasue M is a mediator. So lets try FIML:
 
 ```{r FIMLi_fit, eval = F}
+mar_interaction_data$Ln = scale(as.numeric(mar_interaction_data$L))
 model <- '
 # regression model 
 Ox ~ E
@@ -701,9 +705,9 @@ Ox ~ E
 # co-variances
 Ox ~~ M
 E ~~ M
-Ox ~~ L
-E ~~ L
-M ~~ L
+Ox ~~ Ln
+E ~~ Ln
+M ~~ Ln
 '
 
 FIMLi_fit <- sem(model,
@@ -715,11 +719,10 @@ summary(FIMLi_fit)
 
 ```
 
-OK, this doesn't work (you can make it work in MPLUS). Let's just make a numeric variable Ln as a work-around:
+Note that here we transformed the ordinal variabl L to a numer variable, because lavaan cannot deal with categorical variables when doing FIML estimation (Mplus can). Still, the result are off, because we haven't added informatio about the interaction to the model. The next model does this.
 
 ```{r FIMLi_fit_workaround}
-mar_interaction_data$Ln1 = scale(as.numeric(mar_interaction_data$L))
-mar_interaction_data$Ln2 = mar_interaction_data$Ln1^2
+mar_interaction_data$iEL = scale(as.numeric(mar_interaction_data$L)) * E
 
 model <- '
 # regression model 
@@ -728,9 +731,9 @@ Ox ~ E
 # co-variances
 Ox ~~ M
 E ~~ M
-Ox ~~ Ln1
-E ~~ Ln1
-M ~~ Ln1
+Ox ~~ iEL
+E ~~ iEL
+M ~~ iEL
 '
 
 FIMLi_fit <- sem(model,
@@ -742,23 +745,15 @@ summary(FIMLi_fit)
 
 ```
 
-So, the correct regression coeficient is `r round(coef(lm(O ~ E))[2],2)` and with the FIML model we get `r round(coef(FIMLi_fit)[1],2)`. How about fit measures for this model?
-
-```{r FIMLi_fit_fitmeasures}
-FM = fitMeasures(FIMLi_fit)
-FM[grep("tli|cfi|rmsea", names(FM))]
-```
-
-OK, we have a model that is totally garbage, and yet has totally fine fit indices. I hope this reinforces how important it is to carfully think about the data at hand, before fitting models (I whish I had understood this).
-
+Indeed, the result look nice. This result drives again home that it important to have a good idea about the data generating hypothesis, when doing imputation.
 
 Now lets try multiple imputation. To make things more realistic, we add a bit more missing data (completely random).
 
-```{r mice2}
+```{r mice2, fig.width=5, fig.height=3}
 library(VIM)
 idata = mar_interaction_data[,c("E","M","L","Ox","R_O")]
-for (v in 1:3)
-  idata[sample(N,N*.1),v] = NA
+#for (v in 1:3)
+#  idata[sample(N,N*.1),v] = NA
 
 aggr_plot = aggr(idata,
                  col=c('green4','red'),
@@ -795,7 +790,7 @@ my_imputed_data2$formulas
 
 Lets see if the results look reasonable by looking at density and scatter plots.
 
-```{r impute_mice2_plots}
+```{r impute_mice2_plots, fig.width=5, fig.height=3}
 densityplot(my_imputed_data2)
 xyplot(my_imputed_data2,
        Ox ~ E | L,
@@ -826,14 +821,14 @@ pred["Ox",c("E","L")] = 0
 pred
 ```
 
-Now we have define the interaction predictor and added a method of how to contruct it from existing variables (We have also specified that L predicts only R_O and Ox. [^ We could also specify that O is predicted only by E, but because we are only interested in prediction here, and not regression coefficients, it is OK to keep M in]). Next, we use this method for the imputations.
+Now we have defined the interaction predictor and added a method of how to contruct it from existing variables (We have also specified that L predicts only R_O and Ox. [^ We could also specify that O is predicted only by E, but because we are only interested in prediction here, and not regression coefficients, it is OK to keep M in]). Next, we use this method for the imputations.
 
 ```{r mice2_impute}
 imp <- mice(idata,
             meth = method,    # method for passive imputation
             pred = pred,      # matrix of predictors for all variables
             m = 3,            # number of imputed data sets
-            maxit=50,         # number of iterations in a chain
+            maxit=250,         # number of iterations in a chain
             seed=500,
             printFlag = F)
 
@@ -841,36 +836,51 @@ imp <- mice(idata,
 
 Now that we have a model that is a bit more complex we go through more "checking" steps. MICE is a montecarlo algorithm, so we need to check convergence. We do this by plotting how parameters change over time (there are more sophisticated ways to do this, like comparing within and betweeen chain variance, but MICE does not support those.)
 
-```{r mice_convergence}
+```{r mice_convergence, fig.width=5, fig.height=3}
 plot(imp)
 ```
 
-And we use srip plots to check if all variables have plausible values (i.e. they are nor outside the range of the observed values)
+And we use strip plots to check if all variables have plausible values (i.e. they are nor outside the range of the observed values)
 
-```{r mice_stripplot}
+```{r mice_stripplot, fig.width=5, fig.height=3}
 stripplot(imp)
 ```
 
 Density plots do a similar job.
-```{r mice2_plot1}
+```{r mice2_plot1, fig.width=3, fig.height=3}
 densityplot(imp)
 ```
 
 Particularily interesting are the associations between O/Ox and E given L. We first look at the complete data and then at the imputed data.
 
-```{r mice2_plot2}
+```{r mice2_plot2, fig.width=5, fig.height=3}
 xyplot(imp,
        Ox ~ E | L,
        type = c("p", "smooth"))
-tp = xyplot(O ~ E | L,
+xyplot(O ~ E | L,
        mar_interaction_data,
        type = c("p", "smooth"),
        index.cond=list(c(1:5)))
-tp
 ```
 
-While the imputation was not perfect (thre is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis without these imputed data points naturally underestimates the association between E and O.
+While the imputation was not perfect (thre is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis without these imputed data points naturally underestimates the association between E and O. Still, before we move on, lets see if we can improbe the imputation by using a different imputation method than predcitive mean matching (pmm) for Ox.
 
+```{r mice_Ox_norm_imputation, fig.width=5, fig.height=3}
+method["Ox"] = "norm"
+imp <- mice(idata,
+            meth = method,    # method for passive imputation
+            pred = pred,      # matrix of predictors for all variables
+            m = 3,            # number of imputed data sets
+            maxit=250,         # number of iterations in a chain
+            seed=500,
+            printFlag = F)
+xyplot(imp,
+       Ox ~ E | L,
+       type = c("p", "smooth"))
+
+```
+
+OK, this looks much better. The problem with predictive mean matching is, that it will not allow more expreme values than the observed ones. However, for the data generating process we are looking at, the most extreme values were missing. If this is a possibility, pmm is not the best imputation method.
 
 Now we re-do the imputation to generate more data sets and then run the analysis.
 
@@ -878,8 +888,8 @@ Now we re-do the imputation to generate more data sets and then run the analysis
 imp <- mice(idata,
             meth = method,    # method for passive imputation
             pred = pred,      # matrix of predictors for all variables
-            m = 50,           # number of imputed data sets
-            maxit=25,         # number of iterations in a chain
+            m = 25,           # number of imputed data sets
+            maxit=50,         # number of iterations in a chain
             seed=500,
             printFlag = F)
 
@@ -888,12 +898,14 @@ MI_fit2 = with(imp,
 summary(pool(MI_fit2), conf.int = T)
 ```
 
+make last coefplot
 
-The estimate from imputed data are not perfect, but they are certainly better than the alternatives.
+So FIML and MI both generate usful results, as long as one is careful in specifying a correct model. This reinforces that careful exploration of the data and considerate use of an imputation model are curcial for successful imputation.
 
+## Summary
 
 ## Resources
-
+* A general introduction on [how R handles missing data](https://stats.idre.ucla.edu/r/faq/how-does-r-handle-missing-values/)
 * R [task view](https://cran.r-project.org/web/views/MissingData.html) about missing data
 * Stef van Buren's (author of `mice`) [book](about multiple imputations)
 * [Vignettes](https://www.gerkovink.com/miceVignettes/) for using `mice` 
