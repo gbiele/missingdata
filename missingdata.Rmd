@@ -16,10 +16,54 @@ sapply(dir("functions",full.names = T), source)
 The goal of this session is to briefly introduce dealing with missing data in R.
 We do this by first getting an overview about type of missing data, then moving on to general wise to deal with missing data, and finally looking a a few examples to do analyses in R when data is missing.
 
-Before we get a quick overview about types of missing data, lets clarify why we should worry aboput it. The reasons are:
+Before we get a quick overview about types of missing data, lets clarify why we should worry about it. The reasons are:
 
 * missing data can lead to biased effect sizes, i.e. a complete-case analysis can result in estimates that over or underestimate the true effect sizes in the population.
-* missing data can lead to inflated variance, i.e. standard errors (and followingly p-values or posterior variances) from a complete-cases analysis are larger than they need to be.
+* missing data can lead to inflated variance, i.e. standard errors (and following p-values or posterior variances) from a complete-cases analysis are larger than they need to be.
+
+## Representation of missing data in R
+
+Missing data are represent by `NA`.
+
+```{r intro_NA_1}
+id = c(1, 2, 3, 4, NA, 5, 6, NA, 8, 9)
+id
+```
+
+One can use the `is.na` function to find missing data.
+```{r intro_NA_2}
+is.na(id)
+```
+
+When using a function on a object with missing data, R returns `NA`.
+
+```{r intro_NA_3}
+max(id)
+```
+
+To avoid this, we have to specify that missing data are removed before the operation is performed.
+
+```{r intro_NA_4}
+max(id, na.rm = T)
+```
+
+We also need to work around `NA` when doing logical indexing.
+
+```{r intro_NA_5}
+dta =data.frame(E = rnorm(10),
+                O = rnorm(10))
+dta[id > 5,]
+dta[which(id > 5),]
+```
+
+Regression analysis will by default be performed on the complete cases:
+
+```{r intro_NA_6}
+dta[is.na(id),] = NA
+lm_fit = lm(E ~ O, dta)
+summary(lm_fit)
+```
+
 
 ## Types of missing data
 
@@ -30,7 +74,7 @@ Rubin (1976) originally proposed a classification of missing data into three typ
 * MNAR or Missing Not At Random (is not MCAR or MAR)
 
 
-One way to better understand these different type so missingness is to use directed acyclical graphs (DAGs) and draw missingness or m-graphs (e.g. Mohan & Pearl, 2018). To explain m-graphs, lets start with a simple example (modified from Mohan & Pearl 2018, who were inspired by Little & Rubin, 2002): We want to investigate the effects of education and age on obesity. A simple 
+One way to better understand these different type so missingness is to use directed acyclic graphs (DAGs) and draw missingness or m-graphs (e.g. Mohan & Pearl, 2018). To explain m-graphs, lets start with a simple example (modified from Mohan & Pearl 2018, who were inspired by Little & Rubin, 2002): We want to investigate the effects of education and age on obesity. A simple 
 DAG that represents this relationship looks as follows:
 
 ```{r simple_DAG, fig.height=2, fig.width=2,}
@@ -151,11 +195,11 @@ legend("topright",
 
 ```
 
-In this example, we used vectors of data with complete cases as input, which does not show how R automatically delas with missing data. 
+In this example, we used vectors of data with complete cases as input, which does not show how R automatically deals with missing data. 
 
 ### When the data is _MCAR_, simple list-wise deletion (complete case analysis) still provides consistent effect size estimates 
 
-Note though that while listwise deletion gives us an unbiased effect size, we still get inflated standard errors. The following code also shows implicitely that R's default way of dealing with missing data is list-wise/complete case analysis.
+Note though that while list-wise deletion gives us an unbiased effect size, we still get inflated standard errors. The following code also shows implicitly that R's default way of dealing with missing data is list-wise/complete case analysis.
 
 ```{r MCAR_automatic_listwise_deletion, fig.height=4.5, fig.width=6.5}
 my_data = sim_mDAG(mcar_dag, N = N)
@@ -210,7 +254,7 @@ impliedConditionalIndependencies(mcar_dag)
 impliedConditionalIndependencies(mar_dag)
 ```
 
-Unsurprisingly, the MCAR assumptions implies more independencies. In particular, only the MCAR model assumes that participation (R~O~) is independent of age (A). If we want to test this assumption for our data, we can simply run a regression model `lm(R_o ~ E)` and expect that the coefficient for A is zero. The next few lines of code simulate data from the MCAR and MAR models, each time assuming that the effect size for each path is 0.5, and check the implied conditional independency "A \_||\_ R_O" that holds only for the MCAR model. 
+Unsurprisingly, the MCAR assumptions implies more independencies. In particular, only the MCAR model assumes that participation (R~O~) is independent of age (A). If we want to test this assumption for our data, we can simply run a regression model `lm(R_o ~ E)` and expect that the coefficient for A is zero. The next few lines of code simulate data from the MCAR and MAR models, each time assuming that the effect size for each path is 0.5, and check the implied conditional independence "A \_||\_ R_O" that holds only for the MCAR model. 
 
 ```{r test_impl_cond_ind, fig.height=3, fig.width=7.5}
 
@@ -240,8 +284,8 @@ coefplot2(fit_mcar,
 We see that the regression coefficient for E is not in a region of practical equivalence of +/- .1. Therefor, the assumptions of independence of E and R_O does not hold for the data from the MAR DAG and we cannot simply do a complete case analysis for this data.
 
 ### Assessing _equivalence_ is required to evaluate conditional indendence
-The use of a region of practical equivalence is rooted in the procedure for [equivalence tests](https://en.wikipedia.org/wiki/Equivalence_test). If we want to show that a regression coeficient is (close to) zero, it is not sufficient to show that it is not significance. Rather, one has to show that the regression coefficient is whith high certainty very small. How small "very small" is should generally be determined by subject matter experts. One possible rule of thumb is that an effect that is only 1/10 of a practically meaningfull effect has practically equivalent with zero. Another rule of thumb could be that such a very small effect should be smaller than the expected effect size of your exposure outcome association ^[i.e. don't say an effect of .05 +/- .02 is practically equivalent with zero when assessing conditional independence, and later call an exposure outcome association of .06 +/- .03 "signicant"]. 
-In the application above, I chose an effect size of smaller than 0.1 SMD to be parctically equivalent with 0. Tests for equivalence work by checking if the 90% CIs lie within the ROPE. I you need p-values for this, you can use [equivalence](https://cran.r-project.org/web/packages/equivalence/) the package.
+The use of a region of practical equivalence is rooted in the procedure for [equivalence tests](https://en.wikipedia.org/wiki/Equivalence_test). If we want to show that a regression coefficient is (close to) zero, it is not sufficient to show that it is not significance. Rather, one has to show that the regression coefficient is whit high certainty very small. How small "very small" is should generally be determined by subject matter experts. One possible rule of thumb is that an effect that is only 1/10 of a practically meaningful effect has practically equivalent with zero. Another rule of thumb could be that such a very small effect should be smaller than the expected effect size of your exposure outcome association ^[i.e. don't say an effect of .05 +/- .02 is practically equivalent with zero when assessing conditional independence, and later call an exposure outcome association of .06 +/- .03 "significant"]. 
+In the application above, I chose an effect size of smaller than 0.1 SMD to be practically equivalent with 0. Tests for equivalence work by checking if the 90% CIs lie within the ROPE. I you need p-values for this, you can use [equivalence](https://cran.r-project.org/web/packages/equivalence/) the package.
 
 ### MAR vs MNAR
 We can also check if the assumption of MAR holds. First, lets look at two new examples of a MAR and MNAR situation:
@@ -322,7 +366,7 @@ summary(lmfit)
 
 ## Missingness dependent on a predictor variables is a minor problem
 
-When dealing with missing data, it makes a big difference is missingness is associated with the outcome or predictor variables. If there is only one predictor and missingness depends on the predictor variable listwise deletion is not so problematic ([more here](http://statisticalhorizons.com/listwise-deletion-its-not-evil)). Here is an example DAG:
+When dealing with missing data, it makes a big difference is missingness is associated with the outcome or predictor variables. If there is only one predictor and missingness depends on the predictor variable list-wise deletion is not so problematic ([more here](http://statisticalhorizons.com/listwise-deletion-its-not-evil)). Here is an example DAG:
 
 ```{r mnar_predictor, fig.height=3, fig.width=3}
 mnarpred_dag = dagitty("
@@ -405,7 +449,7 @@ legend("topright",
 One might think that it is the best to just use list-wise deletion (complete case analysis) when the data is MCAR. Indeed, this would not introduce bias. But, as we have seen earlier, throwing away data increases the standard error of parameter estimates. Therefore, it can be useful to not simply do a complete case analysis when data is MCAR.
 
 
-Some authors give the name _ad hoc techniques_ to methods that somehow deal with missing data, but do not come with a theoretically grounded theory of why they should work. List-wise deletion, pairwise deletion, mean/median/mode imputation, and complete case analysis bepong into this group. We will not look further into these methods.
+Some authors give the name _ad hoc techniques_ to methods that somehow deal with missing data, but do not come with a theoretically grounded theory of why they should work. List-wise deletion, pairwise deletion, mean/median/mode imputation, and complete case analysis belong into this group. We will not look further into these methods.
 
 ## Real methods
 
@@ -416,14 +460,14 @@ _All statistical methods to "really" deal with missing data assume that missingn
 * Expectation maximization (EM). _I know little about this!_
 * Multiple imputation (MI). In MI, the analyst uses methods like Multiple Imputation by Chained Equations (MICE) or Hot Deck to generate replicates of the original data set, whereby in each replicate the missing data are replaced with similar but not identical imputed values. The motivation of using multiple replicates is to incorporate uncertainty about the imputed values into the analysis.
 
-A FIML approach is typically used for estimation of structural equation models (SEMs). This works well here, because normally distributed latent variables are central in SEMs, which fits well with the fact that the FIML approach typically involves estimating the multivariate normal distribution for the involved variables. However, when variables in a model are categorical (gender, place of living, ...) the FIML approach is much harder to implement. Indeed, a short google search suggests that there is no plug and play software that reliably implements FIML also for categorical data ([see e.g. here](https://stats.stackexchange.com/questions/51006/full-information-maximum-likelihood-for-missing-data-in-r)). 
+A FIML approach is typically used for estimation of structural equation models (SEMs). This works well here, because normally distributed latent variables are central in SEMs, which fits well with the fact that the FIML approach typically involves estimating the multivariate normal distribution for the involved variables. However, when variables in a model are categorical (gender, place of living, ...) the FIML approach is much harder to implement. Indeed, a short Google search suggests that there is no plug and play software that reliably implements FIML also for categorical data ([see e.g. here](https://stats.stackexchange.com/questions/51006/full-information-maximum-likelihood-for-missing-data-in-r)). 
 
 So even while some strongly favor FIML ([see e.g. here](https://statisticalhorizons.com/ml-is-better-than-mi)), authoritative reviews tend to point out that MI is better suited to situations where categorical variables are involved.
 
 Here is an example with a linear model. The "trick" is that if missing is predicted by a mediator between "cause" and "effect", we don't want to condition on it. This example also shows that it is advantageous to be able to specify the imputation and "effect" models separately, which works fine with MI (including its Bayesian version), but it not so straight forward for FIML.
 
 ### Adjustment for predictors  of participation
-This method is not perfect, because it still results in inflated variances of parameter estimates. Still, this method should not be dimissed, because it allows a relatively easy way to obtain consistent estimates, given a specific MAR structure.
+This method is not perfect, because it still results in inflated variances of parameter estimates. Still, this method should not be dismissed, because it allows a relatively easy way to obtain consistent estimates, given a specific MAR structure.
 For example in this MAR situation introduced above
 ```{r reshow_MAR_DAG, fig.height=3, fig.width=3}
 drawdag(mar_dag)
@@ -444,7 +488,7 @@ es = rbind(truth =                   get_esci(lm_population)[2,],
 plot_coefs(es)
 ```
 
-As expected, the standard error for the adjusted model based on complete data is largers (less data, more predictors).
+As expected, the standard error for the adjusted model based on complete data is larger (less data, more predictors).
 
 
 ### FIML regression in R with lavaan.
@@ -471,7 +515,7 @@ drawdag(mar_mediator_dag)
 
 ```
 
-Here, we can use the [lavaan](https://cran.rstudio.com/web/packages/lavaan/index.html) packagem which was (and is) developed to fit SEM model in R. However, it can also be used to fit _linear_ FIML regression. Lets first look at the true association and association from futile methods to deal with missing data:
+Here, we can use the [lavaan](https://cran.rstudio.com/web/packages/lavaan/index.html) package which was (and is) developed to fit SEM model in R. However, it can also be used to fit _linear_ FIML regression. Lets first look at the true association and association from futile methods to deal with missing data:
 
 ```{r wrong_regressions_mar, fig.width=4, fig.height=3}
 my_data = sim_mDAG(mar_mediator_dag,
@@ -487,7 +531,7 @@ plot_coefs(es)
 
 
 
-The correct total effect of E on O is `r round(es[1,1],digits = 2)`. To recover this, we fit a FIML regression that models the effect of E and O and, importantly, the covariances for E, O, and M:
+The correct total effect of E on O is `r round(es[1,1],digits = 2)`. To recover this, we fit a FIML regression that models the effect of E and O and, importantly, the co-variances for E, O, and M:
 
 ```{r FIML_regression, fig.width=4, fig.height=3}
 library(lavaan)
@@ -521,13 +565,13 @@ Even if the FIML is not perfect, it is better than the complete case analysis. [
 
 ### Multiple Imputation by Chained Equations with the mice package
 
-An alternative to the FIML approach is to use multiple imputation by chained equation. The most popular r packeg to implement this is [mice](https://cran.rstudio.com/web/packages/mice/index.html). Some people seem to have [strong opinions about FIML vs multiple imputations](https://statisticalhorizons.com/ml-better-than-mi). A fair summary seems to be that
-* FIML is preferred when missingness does not dependt on auxiliary variables, the association between the involved variables is well described by a multivariate normal distribution, and there are no strong non-linearities (in the associations between variables)
+An alternative to the FIML approach is to use multiple imputation by chained equation. The most popular r packer to implement this is [mice](https://cran.rstudio.com/web/packages/mice/index.html). Some people seem to have [strong opinions about FIML vs multiple imputations](https://statisticalhorizons.com/ml-better-than-mi). A fair summary seems to be that
+* FIML is preferred when missingness does not depend on auxiliary variables, the association between the involved variables is well described by a multivariate normal distribution, and there are no strong non-linearity (in the associations between variables)
 * MI is preferred when the imputation model has many variables not needed in the effect model, variables are not continuous, and interaction effects are important
 
-One good reason to use `mice` is the extensice documentation. Among other things there is an online [book](https://stefvanbuuren.name/fimd/) with lots of usefull explanations and example code also for nore advances analyses, and a set of [vignettes](https://www.gerkovink.com/miceVignettes/) that serve as a moderately long introduction.
+One good reason to use `mice` is the extensive documentation. Among other things there is an online [book](https://stefvanbuuren.name/fimd/) with lots of useful explanations and example code also for more advanced analyses, and a set of [vignettes](https://www.gerkovink.com/miceVignettes/) that serve as a moderately long introduction.
 
-As a simple introduction to an analysis with mice, we analyse the MAR data det we just analysed with FIML. We start by generating multiple impuations of our data set:
+As a simple introduction to an analysis with mice, we analyse the MAR data that we just analysed with FIML. We start by generating multiple imputations of our data set:
 
 ```{r mice_imputation}
 library(mice)
@@ -550,7 +594,7 @@ xyplot(my_imputed_data,Ox ~ E)
 xyplot(my_imputed_data,Ox ~ M)
 ```
 
-Note that the lower mean for the impueted data is expected, because our data generateing model specified that cases with low exposure values were more likely to miss the outcome variable.
+Note that the lower mean for the imputed data is expected, because our data generating model specified that cases with low exposure values were more likely to miss the outcome variable.
 
 
 Five imputations were OK for visualization purposes, but we need more for the real analysis.
@@ -596,7 +640,7 @@ MI_fit = with(my_imputed_data,
               lm(Ox ~ E))
 ```
 
-The object MI_fit is of the class [mira](https://stefvanbuuren.name/mice/reference/mira-class.html), and contains in slote 4 for each imputed data set the result of the regression model we specified. We can look at all coeffcients:
+The object MI_fit is of the class [mira](https://stefvanbuuren.name/mice/reference/mira-class.html), and contains in slots 4 for each imputed data set the result of the regression model we specified. We can look at all coefficients:
 
 ```{r mice_summary}
 summary(MI_fit)
@@ -640,12 +684,12 @@ L O R_O
 drawdag(mar_interaction_dag)
 ```
 
-In all previous analyses we could use dagitties simulateSEM function to generate data from a DAG, because we treated data as multivariate normal. However, we can't do this now, because
+In all previous analyses we could use `dagittie`'s `simulateSEM` function to generate data from a DAG, because we treated data as multivariate normal. However, we can't do this now, because
 
 * L is a categorical variables and
 * the effect of L on O is assumed to be that of an effect modifier.
 
-The followig code generates data from this model:
+The following code generates data from this model:
 
 ```{r mar_interaction_sim}
 N = 500
@@ -694,7 +738,7 @@ legend("bottomright",
 
 ```
 
-Obviously, we would get a biased estimate when using only complete cases. We also can't adjust for M, becasue M is a mediator. So lets try FIML:
+Obviously, we would get a biased estimate when using only complete cases. We also can't adjust for M, because M is a mediator. So lets try FIML:
 
 ```{r FIMLi_fit, eval = F}
 mar_interaction_data$Ln = scale(as.numeric(mar_interaction_data$L))
@@ -719,7 +763,7 @@ summary(FIMLi_fit)
 
 ```
 
-Note that here we transformed the ordinal variabl L to a numer variable, because lavaan cannot deal with categorical variables when doing FIML estimation (Mplus can). Still, the result are off, because we haven't added informatio about the interaction to the model. The next model does this.
+Note that here we transformed the ordinal variable L to a number variable, because `lavaan` cannot deal with categorical variables when doing FIML estimation (Mplus can). Still, the result are off, because we haven't added information about the interaction to the model. The next model does this.
 
 ```{r FIMLi_fit_workaround}
 mar_interaction_data$iEL = scale(as.numeric(mar_interaction_data$L)) * E
@@ -767,7 +811,7 @@ aggr_plot = aggr(idata,
 ```
 
 
-The basic command to impute data is stil simple:
+The basic command to impute data is simple:
 
 ```{r impute_mice2}
 
@@ -798,9 +842,9 @@ xyplot(my_imputed_data2,
 ```
 
 
-Definitively not great, rather horrible. The mian reason is that model does not take into account interaction terms. `mice` uses the concept of _passive imputation_ to insure that derived variables (like interactions) are consistent with imputations throughout the imputation process. Detailed information about specifyingh such more complex imputation models can be found [here](https://stefvanbuuren.name/fimd/sec-knowledge.html), including a section about [efficient imputations of sum-scores](https://stefvanbuuren.name/fimd/sec-knowledge.html#sec:sumscores). To set up passive imputation of an interaction variable one has to:
+Definitively not great, rather horrible. The main reason is that model does not take into account interaction terms. `mice` uses the concept of _passive imputation_ to insure that derived variables (like interactions) are consistent with imputations throughout the imputation process. Detailed information about specifying such more complex imputation models can be found [here](https://stefvanbuuren.name/fimd/sec-knowledge.html), including a section about [efficient imputations of sum-scores](https://stefvanbuuren.name/fimd/sec-knowledge.html#sec:sumscores). To set up passive imputation of an interaction variable one has to:
 
-* intitalize hat variable
+* initialize hat variable
 * specify a method for that variable, i.e. define an R expression that tell mice how to generate the derived variable
 * adjust the prediction matrix to make sure the derived variable is only used as a predictor where needed
 
@@ -821,7 +865,7 @@ pred["Ox",c("E","L")] = 0
 pred
 ```
 
-Now we have defined the interaction predictor and added a method of how to contruct it from existing variables (We have also specified that L predicts only R_O and Ox. [^ We could also specify that O is predicted only by E, but because we are only interested in prediction here, and not regression coefficients, it is OK to keep M in]). Next, we use this method for the imputations.
+Now we have defined the interaction predictor and added a method of how to construct it from existing variables (We have also specified that L predicts only R_O and Ox). Next, we use this method for the imputation.
 
 ```{r mice2_impute}
 imp <- mice(idata,
@@ -834,7 +878,7 @@ imp <- mice(idata,
 
 ```
 
-Now that we have a model that is a bit more complex we go through more "checking" steps. MICE is a montecarlo algorithm, so we need to check convergence. We do this by plotting how parameters change over time (there are more sophisticated ways to do this, like comparing within and betweeen chain variance, but MICE does not support those.)
+Now that we have a model that is a bit more complex we go through more "checking" steps. MICE is a Monta Carlo algorithm, so we need to check convergence. We do this by plotting how parameters change over time (there are more sophisticated ways to do this, like comparing within and between chain variance, but MICE does not support those.)
 
 ```{r mice_convergence, fig.width=5, fig.height=3}
 plot(imp)
@@ -851,7 +895,7 @@ Density plots do a similar job.
 densityplot(imp)
 ```
 
-Particularily interesting are the associations between O/Ox and E given L. We first look at the complete data and then at the imputed data.
+Particularly interesting are the associations between O/Ox and E given L. We first look at the complete data and then at the imputed data.
 
 ```{r mice2_plot2, fig.width=5, fig.height=3}
 xyplot(imp,
@@ -863,7 +907,7 @@ xyplot(O ~ E | L,
        index.cond=list(c(1:5)))
 ```
 
-While the imputation was not perfect (thre is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis without these imputed data points naturally underestimates the association between E and O. Still, before we move on, lets see if we can improbe the imputation by using a different imputation method than predcitive mean matching (pmm) for Ox.
+While the imputation was not perfect (there is a problem with L1) we see that we have filled in lost of cases for groups L1-L3, where the correlation is typically positive. A complete cases analysis without these imputed data points naturally underestimates the association between E and O. Still, before we move on, lets see if we can improve the imputation by using a different imputation method than predictive mean matching (pmm) for Ox.
 
 ```{r mice_Ox_norm_imputation, fig.width=5, fig.height=3}
 method["Ox"] = "norm"
@@ -880,11 +924,11 @@ xyplot(imp,
 
 ```
 
-OK, this looks much better. The problem with predictive mean matching is, that it will not allow more expreme values than the observed ones. However, for the data generating process we are looking at, the most extreme values were missing. If this is a possibility, pmm is not the best imputation method.
+OK, this looks much better. The problem with predictive mean matching is, that it will not allow more extreme values than the observed ones. However, for the data generating process we are looking at, the most extreme values were missing. If this is a possibility, pmm is not the best imputation method.
 
 Now we re-do the imputation to generate more data sets and then run the analysis.
 
-```{r}
+```{r mice_imputations_long}
 imp <- mice(idata,
             meth = method,    # method for passive imputation
             pred = pred,      # matrix of predictors for all variables
@@ -898,11 +942,55 @@ MI_fit2 = with(imp,
 summary(pool(MI_fit2), conf.int = T)
 ```
 
-make last coefplot
+And we compare the results of different models:
 
-So FIML and MI both generate usful results, as long as one is careful in specifying a correct model. This reinforces that careful exploration of the data and considerate use of an imputation model are curcial for successful imputation.
+```{r fig.width=5, fig.height=4}
+esMI_fits = summary(pool(MI_fit2),
+                        conf.int = T)[2,c("estimate","2.5 %","97.5 %")]
+es_FIML = parameterEstimates(FIML_fit)[1,c("est","ci.lower","ci.upper")]
+colnames(es_FIML) = colnames(esMI_fits)
+es_FIMLi = parameterEstimates(FIMLi_fit)[1,c("est","ci.lower","ci.upper")]
+colnames(es_FIMLi) = colnames(esMI_fits)
+
+
+
+es = rbind(
+  truth = 
+    get_esci(lm(O ~ E, mar_interaction_data))[2,],
+  complete_cases =
+    get_esci(lm(`O*` ~ E, mar_interaction_data))[2,],
+  complete_cases_adj = 
+    get_esci(lm(`O*` ~ E + M + L, mar_interaction_data))[2,],
+  FIML           = 
+    es_FIML,
+  FIML_interaction = 
+    es_FIMLi,
+  MI             = 
+    esMI_fits
+  )
+
+plot_coefs(es)
+
+
+```
+
+So FIML and MI both generate useful results, as long as one is careful in specifying a correct model. This reinforces that careful exploration of the data and considerate use of an imputation model are crucial for successful imputation.
+
+In the current example both FIML and MI allows us to handle missing data properly. Still, MI is generally more flexible because 
+
+* it is easier to define complex missing data models
+* imputed data can be fed into any follow up analysis, some of which might not be available with `lavaan`
 
 ## Summary
+* R typically returns `NA` when an operation is performed with missing data. The important exception is regression models, where complete case analysis is the default
+* When modeling exposure outcome associations, missing data are most problematic if _outcome_ data is MNAR
+* Complete cases analysis under missingness in predictor variables results in larger than necessary standard errors
+* it is important to explicitly specify (and check) a missing data model
+* valid ways to deal with missing data include 
+    * adjustment for missingness predictors (depends on missing data model and will still have larger than necessary standard errors)
+    * Full information maximum likelihood (FIML) as for example in the `lavaan` package. FIML does not "just work" and also requires a thinking about the missing data model
+    * Multiple imputation (MI) as for example in the `mice` package. This is the most flexible approach
+    * Weighting! We haven't talked about this, but inverse probability of "participation" weighting (e.g. in the package `iptw`) can also be used to deal with missing data.
 
 ## Resources
 * A general introduction on [how R handles missing data](https://stats.idre.ucla.edu/r/faq/how-does-r-handle-missing-values/)
