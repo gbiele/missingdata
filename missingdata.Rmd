@@ -778,6 +778,7 @@ Note that here we transformed the ordinal variable L to a numeric variable, beca
 
 ```{r FIMLi_fit_workaround}
 mar_interaction_data$iEL = scale(as.numeric(mar_interaction_data$L)) * E
+mar_interaction_data$nL = scale(as.numeric(mar_interaction_data$L))
 
 model <- '
 # regression model 
@@ -785,10 +786,11 @@ Ox ~ E
 
 # co-variances
 Ox ~~ M
-E ~~ M
 Ox ~~ iEL
-E ~~ iEL
-M ~~ iEL
+E ~~ M
+nL ~~ M
+nL ~~ Ox
+nL ~~ iEL
 '
 
 FIMLi_fit <- sem(model,
